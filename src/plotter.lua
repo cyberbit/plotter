@@ -1,6 +1,6 @@
 -- Plotter by cyberbit
 -- MIT License
--- Version 0.0.1
+-- Version 0.0.2
 
 local pixelbox2 = (function ()
     -- Pixelbox Lite v2 by 9551-Dev
@@ -11,13 +11,22 @@ local pixelbox2 = (function ()
 
     local t_cat  = table.concat
 
+    -- local sampling_lookup = {
+    --     {2,3,4,5,6},
+    --     {4,1,6,3,5},
+    --     {1,4,5,2,6},
+    --     {2,6,3,5,1},
+    --     {3,6,1,4,2},
+    --     {4,5,2,3,1}
+    -- }
+
     local sampling_lookup = {
-        {2,3,4,5,6},
-        {4,1,6,3,5},
-        {1,4,5,2,6},
-        {2,6,3,5,1},
-        {3,6,1,4,2},
-        {4,5,2,3,1}
+        {3,5,2,4,6},
+        {4,6,1,3,5},
+        {1,5,2,4,6},
+        {2,6,1,3,5},
+        {1,3,6,4,2},
+        {4,2,5,3,1}
     }
 
     local texel_character_lookup  = {}
@@ -316,7 +325,7 @@ local pixelbox2 = (function ()
     return pixelbox
 end)()
 
-local Plotter = setmetatable({ _VERSION = '0.0.1' }, {
+local Plotter = setmetatable({ _VERSION = '0.0.2' }, {
     __call = function (class, ...)
         local object = setmetatable({}, class)
         
@@ -384,10 +393,10 @@ function Plotter:drawLineSometimes(x1, y1, x2, y2, color, onrate, offrate, oncou
     if not offcount then offcount = 0 end
 
     local dx = math.abs(x2 - x1)
-    local dy = math.abs(y2 - y1)
+    local dy = -math.abs(y2 - y1)
     local sx = x1 < x2 and 1 or -1
     local sy = y1 < y2 and 1 or -1
-    local err = dx - dy
+    local err = dx + dy
 
     while true do
         if onrate > 0 and offrate == 0 then
@@ -414,8 +423,8 @@ function Plotter:drawLineSometimes(x1, y1, x2, y2, color, onrate, offrate, oncou
 
         local e2 = 2 * err
 
-        if e2 > -dy then
-            err = err - dy
+        if e2 > dy then
+            err = err + dy
             x1 = x1 + sx
         end
 
@@ -461,10 +470,10 @@ function Plotter:drawAreaLineSometimes(x1, y1, x2, y2, yfrom, color, onrate, off
     if not offcount then offcount = 0 end
 
     local dx = math.abs(x2 - x1)
-    local dy = math.abs(y2 - y1)
+    local dy = -math.abs(y2 - y1)
     local sx = x1 < x2 and 1 or -1
     local sy = y1 < y2 and 1 or -1
-    local err = dx - dy
+    local err = dx + dy
 
     while true do
         if onrate > 0 and offrate == 0 then
@@ -491,8 +500,8 @@ function Plotter:drawAreaLineSometimes(x1, y1, x2, y2, yfrom, color, onrate, off
 
         local e2 = 2 * err
 
-        if e2 > -dy then
-            err = err - dy
+        if e2 > dy then
+            err = err + dy
             x1 = x1 + sx
         end
 
@@ -587,6 +596,26 @@ function Plotter:chartLine(data, dataw, miny, maxy, color)
     end
 end
 
+--- plot one-dimensional data as a line in scaled coordinates, where
+--- the data index is used as the horizontal axis. chart will scale
+--- data indexes to fit all provided data.
+--- @param data table data to plot. index = x, value = y
+--- @param color colors drawing color
+function Plotter:chartLineAuto(data, color)
+    local dataw = #data
+
+    local actualmin, actualmax = math.huge, -math.huge
+
+    for _, v in ipairs(data) do
+        if v < actualmin then actualmin = v end
+        if v > actualmax then actualmax = v end
+    end
+
+    self:chartLine(data, dataw, actualmin, actualmax, color)
+
+    return actualmin, actualmax
+end
+
 --- plot one-dimensional data as an area in scaled coordinates, where
 --- the data index is used as the horizontal axis
 --- @param data table data to plot. index = x, value = y
@@ -625,6 +654,27 @@ function Plotter:chartArea(data, dataw, miny, maxy, areay, color)
             end
         end
     end
+end
+
+--- plot one-dimensional data as an area in scaled coordinates, where
+--- the data index is used as the horizontal axis. chart will scale
+--- data indexes to fit all provided data.
+--- @param data table data to plot. index = x, value = y
+--- @param areay number data value to use as baseline for area fill. larger values will fill towards -y, smaller values will fill towards +y.
+--- @param color colors drawing color
+function Plotter:chartAreaAuto(data, areay, color)
+    local dataw = #data
+
+    local actualmin, actualmax = math.huge, -math.huge
+
+    for _, v in ipairs(data) do
+        if v < actualmin then actualmin = v end
+        if v > actualmax then actualmax = v end
+    end
+
+    self:chartArea(data, dataw, actualmin, actualmax, areay, color)
+
+    return actualmin, actualmax
 end
 
 --- clear plot using specified color
