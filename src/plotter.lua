@@ -624,8 +624,11 @@ function Plotter:chartLineAuto(data, color)
     local actualmin, actualmax = math.huge, -math.huge
 
     for _, v in ipairs(data) do
-        if v < actualmin then actualmin = v end
-        if v > actualmax then actualmax = v end
+        -- skip NAN
+        if v ~= self.NAN then
+            if v < actualmin then actualmin = v end
+            if v > actualmax then actualmax = v end
+        end
     end
 
     -- center static data
@@ -698,8 +701,11 @@ function Plotter:chartAreaAuto(data, areay, color)
     local actualmin, actualmax = math.huge, -math.huge
 
     for _, v in ipairs(data) do
-        if v < actualmin then actualmin = v end
-        if v > actualmax then actualmax = v end
+        -- skip NAN
+        if v ~= self.NAN then
+            if v < actualmin then actualmin = v end
+            if v > actualmax then actualmax = v end
+        end
     end
 
     -- center static data
