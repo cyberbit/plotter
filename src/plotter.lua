@@ -325,7 +325,7 @@ local pixelbox2 = (function ()
     return pixelbox
 end)()
 
-local Plotter = setmetatable({ _VERSION = '0.0.2' }, {
+local Plotter = setmetatable({ _VERSION = '0.0.3' }, {
     __call = function (class, ...)
         local object = setmetatable({}, class)
         
@@ -335,6 +335,10 @@ local Plotter = setmetatable({ _VERSION = '0.0.2' }, {
     end
 })
 Plotter.__index = Plotter
+
+-- constants
+Plotter.NAN = '_NAN'
+Plotter.RANGE_MIN = 0.000001
 
 Plotter.math = {
     --- round a number to the nearest integer
@@ -364,7 +368,7 @@ function Plotter:constructor(win)
     self.box = pixelbox2.new(win)
 end
 
---- draw a line using canvas coordinates
+--- draw a line using canvas coordinates. OOB pixels will be processed, but not drawn.
 ---@param x1 integer start x
 ---@param y1 integer start y
 ---@param x2 integer end x
@@ -374,7 +378,8 @@ function Plotter:drawLine(x1, y1, x2, y2, color)
     self:drawLineSometimes(x1, y1, x2, y2, color, 1, 0)
 end
 
---- draw a line using canvas coordinates, with specified on/off pattern. returns next pattern offset
+--- draw a line using canvas coordinates, with specified on/off pattern. OOB pixels
+--- will be processed, but not drawn. returns next pattern offset
 ---@param x1 integer start x
 ---@param y1 integer start y
 ---@param x2 integer end x
@@ -399,21 +404,26 @@ function Plotter:drawLineSometimes(x1, y1, x2, y2, color, onrate, offrate, oncou
     local err = dx + dy
 
     while true do
-        if onrate > 0 and offrate == 0 then
-            self.box:set_pixel(x1, y1, color)
+        -- don't draw OOB, but continue processing the line
+        if x1 < 1 or y1 < 1 or x1 > self.box.width or y1 > self.box.height then
+            -- no draw
         else
-            if oncount < onrate then
+            if onrate > 0 and offrate == 0 then
                 self.box:set_pixel(x1, y1, color)
-
-                oncount = oncount + 1
-            elseif offcount < offrate then
-                -- skip pixel
-                offcount = offcount + 1
             else
-                self.box:set_pixel(x1, y1, color)
+                if oncount < onrate then
+                    self.box:set_pixel(x1, y1, color)
 
-                oncount = 1
-                offcount = 0
+                    oncount = oncount + 1
+                elseif offcount < offrate then
+                    -- skip pixel
+                    offcount = offcount + 1
+                else
+                    self.box:set_pixel(x1, y1, color)
+
+                    oncount = 1
+                    offcount = 0
+                end
             end
         end
 
@@ -577,20 +587,27 @@ function Plotter:chartLine(data, dataw, miny, maxy, color)
     local lastx, lasty
 
     for x, y in ipairs(data) do
-        local nextx = self.math.round(self.math.scale(x, 1, dataw, boxminx, boxmaxx))
-        local nexty = 1 + boxmaxy - self.math.round(self.math.scale(y, miny, maxy, boxminy, boxmaxy))
-
-        if nextx < boxminx or nexty < boxminy or nextx > boxmaxx or nexty > boxmaxy then
-            -- do nothing for OOB points
+        -- plotter.NAN values are not charted
+        if y == self.NAN then
+            lasty = nil
         else
-            if type(lastx) == 'nil' then
-                lastx = nextx
-                lasty = nexty
-            else
-                self:drawLine(lastx, lasty, nextx, nexty, color)
+            local nextx = self.math.round(self.math.scale(x, 1, dataw, boxminx, boxmaxx))
+            local nexty = 1 + boxmaxy - self.math.round(self.math.scale(y, miny, maxy, boxminy, boxmaxy))
 
-                lastx = nextx
-                lasty = nexty
+            if nextx < boxminx or nexty < boxminy or nextx > boxmaxx or nexty > boxmaxy then
+                -- do nothing for OOB points
+            else
+                if type(lasty) == 'nil' then
+                    self:drawLine(nextx, nexty, nextx, nexty, color)
+
+                    lastx = nextx
+                    lasty = nexty
+                else
+                    self:drawLine(lastx, lasty, nextx, nexty, color)
+                    
+                    lastx = nextx
+                    lasty = nexty
+                end
             end
         end
     end
@@ -609,6 +626,12 @@ function Plotter:chartLineAuto(data, color)
     for _, v in ipairs(data) do
         if v < actualmin then actualmin = v end
         if v > actualmax then actualmax = v end
+    end
+
+    -- center static data
+    if actualmin == actualmax then
+        actualmin = actualmin - self.RANGE_MIN / 2
+        actualmax = actualmax + self.RANGE_MIN / 2
     end
 
     self:chartLine(data, dataw, actualmin, actualmax, color)
@@ -633,24 +656,31 @@ function Plotter:chartArea(data, dataw, miny, maxy, areay, color)
     local lastx, lasty
 
     for x, y in ipairs(data) do
-        local nextx = self.math.round(self.math.scale(x, 1, dataw, boxminx, boxmaxx))
-        local nexty = 1 + boxmaxy - self.math.round(self.math.scale(y, miny, maxy, boxminy, boxmaxy))
-        local nextareay = 1 + boxmaxy - self.math.round(self.math.scale(areay, miny, maxy, boxminy, boxmaxy))
-
-        if nextareay > boxmaxy then nextareay = boxmaxy end
-        if nextareay < boxminy then nextareay = boxminy end
-
-        if nextx < boxminx or nexty < boxminy or nextx > boxmaxx or nexty > boxmaxy then
-            -- do nothing for OOB points
+        -- plotter.NAN values are not charted
+        if y == self.NAN then
+            lasty = nil
         else
-            if type(lastx) == 'nil' then
-                lastx = nextx
-                lasty = nexty
-            else
-                self:drawAreaLine(lastx, lasty, nextx, nexty, nextareay, color)
+            local nextx = self.math.round(self.math.scale(x, 1, dataw, boxminx, boxmaxx))
+            local nexty = 1 + boxmaxy - self.math.round(self.math.scale(y, miny, maxy, boxminy, boxmaxy))
+            local nextareay = 1 + boxmaxy - self.math.round(self.math.scale(areay, miny, maxy, boxminy, boxmaxy))
 
-                lastx = nextx
-                lasty = nexty
+            if nextareay > boxmaxy then nextareay = boxmaxy end
+            if nextareay < boxminy then nextareay = boxminy end
+
+            if nextx < boxminx or nexty < boxminy or nextx > boxmaxx or nexty > boxmaxy then
+                -- do nothing for OOB points
+            else
+                if type(lasty) == 'nil' then
+                    self:drawAreaLine(nextx, nexty, nextx, nexty, nextareay, color)
+
+                    lastx = nextx
+                    lasty = nexty
+                else
+                    self:drawAreaLine(lastx, lasty, nextx, nexty, nextareay, color)
+
+                    lastx = nextx
+                    lasty = nexty
+                end
             end
         end
     end
@@ -672,9 +702,72 @@ function Plotter:chartAreaAuto(data, areay, color)
         if v > actualmax then actualmax = v end
     end
 
+    -- center static data
+    if actualmin == actualmax then
+        actualmin = actualmin - self.RANGE_MIN / 2
+        actualmax = actualmax + self.RANGE_MIN / 2
+    end
+
     self:chartArea(data, dataw, actualmin, actualmax, areay, color)
 
     return actualmin, actualmax
+end
+
+--- plot two-dimensional data as points in scaled coordinates, where
+--- the data is a table of {x, y} pairs.
+--- @param data table data to plot. at each index: {x, y}
+--- @param minx number minimum of data values to fit in the plot area (left)
+--- @param maxx number maximum of data values to fit in the plot area (right)
+--- @param miny number minimum of data values to fit in the plot area (bottom)
+--- @param maxy number maximum of data values to fit in the plot area (top)
+--- @param color colors drawing color
+function Plotter:chartXY(data, minx, maxx, miny, maxy, color)
+    local boxminx = 1
+    local boxmaxx = self.box.width
+    local boxminy = 1
+    local boxmaxy = self.box.height
+
+    for _, v in ipairs(data) do
+        local x, y = table.unpack(v)
+
+        local nextx = self.math.round(self.math.scale(x, minx, maxx, boxminx, boxmaxx))
+        local nexty = 1 + boxmaxy - self.math.round(self.math.scale(y, miny, maxy, boxminy, boxmaxy))
+
+        if nextx < boxminx or nexty < boxminy or nextx > boxmaxx or nexty > boxmaxy then
+            -- do nothing for OOB points
+        else
+            self:drawLine(nextx, nexty, nextx, nexty, color)
+        end
+    end
+end
+
+function Plotter:chartGrid(dataw, miny, maxy, xOffset, color, styles)
+    local xGap, yLinesMin, yLinesFactor = 10, 5, 2
+
+    if not color then color = colors.gray end
+
+    -- override grid styles
+    if type(styles) == 'table' then
+        xGap = styles.xGap or xGap
+        yLinesMin = styles.yLinesMin or yLinesMin
+        yLinesFactor = styles.yLinesFactor or yLinesFactor
+    end
+
+    local gridData = {}
+
+    local yPow = math.floor(math.log(maxy - miny, yLinesFactor))
+
+    local ySpace = yLinesFactor ^ yPow / yLinesMin
+
+    local yOffset = miny % ySpace
+
+    for x = xOffset + 1, dataw, xGap do
+        for y = miny - yOffset, maxy, ySpace do
+            table.insert(gridData, {x, y})
+        end
+    end
+
+    self:chartXY(gridData, 1, dataw, miny, maxy, color)
 end
 
 --- clear plot using specified color
